@@ -9,9 +9,22 @@ require('codemirror/addon/fold/brace-fold');
 require('codemirror/addon/edit/matchbrackets');
 require('codemirror/mode/javascript/javascript');
 
+const jsondiffpatch = require('jsondiffpatch');
+const formatter = require('jsondiffpatch/formatters/jsonpatch');
+
 const validate = require('../lib/validate');
 const zoomextent = require('../lib/zoomextent');
 const flash = require('../ui/flash');
+
+const patcher = jsondiffpatch.create({});
+let lastState = {};
+const changes = [];
+const updateChanges = (currentState) => {
+  const diff = patcher.diff(lastState, currentState);
+  const formatted = formatter.format(diff);
+  if (formatted.length > 0) changes.push(formatted);
+  lastState = currentState;
+};
 
 module.exports = function (context) {
   CodeMirror.keyMap.tabSpace = {
@@ -77,7 +90,9 @@ module.exports = function (context) {
 
     button.on('click', () => {
       // copy to clipboard
-      navigator.clipboard.writeText(editor.getValue());
+      navigator.clipboard.writeText(
+        changes.map((c) => JSON.stringify(c)).join('\n')
+      );
 
       // set the button to a green checkmark
       buttonIcon
@@ -163,12 +178,15 @@ module.exports = function (context) {
     context.dispatch.on('change.json', (event) => {
       if (event.source !== 'json') {
         const scrollInfo = editor.getScrollInfo();
+        updateChanges(JSON.parse(JSON.stringify(context.data.get('map'))));
         editor.setValue(JSON.stringify(context.data.get('map'), null, 2));
         editor.scrollTo(scrollInfo.left, scrollInfo.top);
       }
     });
 
-    editor.setValue(JSON.stringify(context.data.get('map'), null, 2));
+    const mapState = JSON.stringify(context.data.get('map'), null, 2);
+    updateChanges(JSON.parse(mapState));
+    editor.setValue(mapState);
   }
 
   render.off = function () {
